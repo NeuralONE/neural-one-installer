@@ -181,6 +181,25 @@ ensure_gcloud() {
   log_ok "Google Cloud SDK instalado"
 }
 
+# Claude Code (el CLI del equipo). Instalación nativa de Anthropic → ~/.local/bin
+# (el layout que usa el equipo). El wrapper `claude()` del bootstrap (módulo 45)
+# hace `command claude`, así que el binario debe existir antes del primer uso.
+ensure_claude_code() {
+  if command -v claude &>/dev/null || [ -x "$HOME/.local/bin/claude" ]; then
+    log_ok "Claude Code disponible"
+    return 0
+  fi
+  log_warn "Falta Claude Code (el CLI del equipo)."
+  if ! confirm "¿Instalar Claude Code ahora?"; then
+    die "Claude Code es necesario para trabajar. Instálalo (https://claude.ai/install.sh) y reintenta."
+  fi
+  curl -fsSL https://claude.ai/install.sh | bash
+  if ! command -v claude &>/dev/null && [ ! -x "$HOME/.local/bin/claude" ]; then
+    die "Claude Code instalado pero no se encontró el binario. Abre una terminal nueva y reintenta."
+  fi
+  log_ok "Claude Code instalado"
+}
+
 ensure_homebrew
 ensure_formula git
 ensure_formula gh
@@ -189,6 +208,7 @@ ensure_formula yq
 ensure_formula python3 python
 ensure_gcloud
 ensure_cask code visual-studio-code "VS Code"
+ensure_claude_code
 
 # Persistir el PATH para sesiones futuras (brew + gcloud) en ~/.zprofile. En la
 # sesión del instalador ya están cargados; esto asegura que el `claude` diario y
