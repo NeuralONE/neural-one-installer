@@ -10,7 +10,7 @@
 #
 # Qué hace (y qué NO):
 #   - Instala los prerequisitos que el bootstrap del equipo da por hechos
-#     (Homebrew, git, gh, gcloud, jq, yq, python3, VS Code).
+#     (Homebrew, git, gh, gcloud, jq, yq, python3, node, VS Code, Claude Code).
 #   - Autentica gcloud + GitHub (lo mínimo para clonar el repo privado).
 #   - Verifica que tu cuenta está autorizada en el equipo (mensaje neutro si no).
 #   - Clona el repo de configuración privado y delega TODO el resto al
@@ -206,6 +206,7 @@ ensure_formula gh
 ensure_formula jq
 ensure_formula yq
 ensure_formula python3 python
+ensure_formula node               # trae npx — el bootstrap (módulo 35, MCP Looker) lo exige
 ensure_gcloud
 ensure_cask code visual-studio-code "VS Code"
 ensure_claude_code

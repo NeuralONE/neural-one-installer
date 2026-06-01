@@ -17,7 +17,7 @@ herramienta y abrirá los flujos de login de Google Cloud y GitHub en el navegad
 ## Qué hace
 
 1. **Prerequisitos** — instala (con tu confirmación, vía [Homebrew](https://brew.sh))
-   lo que haga falta: `git`, `gh`, `gcloud`, `jq`, `yq`, `python3`, VS Code y Claude Code.
+   lo que haga falta: `git`, `gh`, `gcloud`, `jq`, `yq`, `python3`, `node`, VS Code y Claude Code.
 2. **Autenticación** — Google Cloud + GitHub.
 3. **Autorización** — comprueba que tu cuenta está dada de alta en el equipo.
 4. **Configuración** — clona el repo de configuración privado y ejecuta el
