@@ -200,6 +200,34 @@ ensure_claude_code() {
   log_ok "Claude Code instalado"
 }
 
+# VS Code: caso especial. El testigo es el CLI `code`. Si no está en el PATH pero
+# la app YA está instalada a mano (descargada de la web, en /Applications), usamos
+# su CLI embebido en vez de reinstalar por brew (evita el conflicto con la copia
+# existente). Solo si no hay ni CLI ni app, instalamos el cask.
+VSCODE_BIN="/Applications/Visual Studio Code.app/Contents/Resources/app/bin"
+ensure_vscode() {
+  if command -v code &>/dev/null; then
+    log_ok "VS Code disponible"
+    return 0
+  fi
+  if [ -x "$VSCODE_BIN/code" ]; then
+    log_info "VS Code ya estaba instalado; vinculando su CLI 'code' al PATH…"
+    export PATH="$VSCODE_BIN:$PATH"
+    log_ok "VS Code disponible (CLI de la app existente)"
+    return 0
+  fi
+  log_warn "Falta VS Code."
+  if ! confirm "¿Instalar VS Code vía Homebrew?"; then
+    log_warn "VS Code omitido — algunas funciones pueden no estar disponibles."
+    return 0
+  fi
+  brew install --cask visual-studio-code
+  if ! command -v code &>/dev/null && [ -x "$VSCODE_BIN/code" ]; then
+    export PATH="$VSCODE_BIN:$PATH"
+  fi
+  log_ok "VS Code instalado"
+}
+
 ensure_homebrew
 ensure_formula git
 ensure_formula gh
@@ -208,7 +236,7 @@ ensure_formula yq
 ensure_formula python3 python
 ensure_formula node               # trae npx — el bootstrap (módulo 35, MCP Looker) lo exige
 ensure_gcloud
-ensure_cask code visual-studio-code "VS Code"
+ensure_vscode
 ensure_claude_code
 
 # Persistir el PATH para sesiones futuras (brew + gcloud) en ~/.zprofile. En la
@@ -218,8 +246,9 @@ if command -v brew &>/dev/null; then
   _brew_bin="$(command -v brew)"
   _gcloud_inc="$("$_brew_bin" --prefix)/share/google-cloud-sdk/path.zsh.inc"
   persist_profile_block "eval \"\$(${_brew_bin} shellenv)\"
-[ -f \"${_gcloud_inc}\" ] && source \"${_gcloud_inc}\""
-  log_ok "PATH persistido en ~/.zprofile (brew + gcloud)"
+[ -f \"${_gcloud_inc}\" ] && source \"${_gcloud_inc}\"
+[ -d \"${VSCODE_BIN}\" ] && export PATH=\"${VSCODE_BIN}:\$PATH\""
+  log_ok "PATH persistido en ~/.zprofile (brew + gcloud + VS Code)"
 fi
 
 # ============================================================
