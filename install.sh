@@ -92,6 +92,25 @@ fi
 
 log_step "Prerequisitos"
 
+# Persistencia de PATH en el perfil de login (~/.zprofile): brew y gcloud deben
+# quedar disponibles también en sesiones futuras (no solo en la del instalador).
+# Bloque marcado e idempotente — re-ejecutar reemplaza el bloque, no duplica.
+NEURAL_PROFILE="$HOME/.zprofile"
+PROFILE_BEGIN="# === BEGIN Neural ONE installer (PATH) ==="
+PROFILE_END="# === END Neural ONE installer (PATH) ==="
+
+persist_profile_block() {
+  local block="$1" tmp
+  touch "$NEURAL_PROFILE"
+  if grep -qF "$PROFILE_BEGIN" "$NEURAL_PROFILE" 2>/dev/null; then
+    tmp="$(mktemp)"
+    awk -v b="$PROFILE_BEGIN" -v e="$PROFILE_END" \
+      '$0==b{skip=1} !skip{print} $0==e{skip=0}' "$NEURAL_PROFILE" > "$tmp"
+    mv "$tmp" "$NEURAL_PROFILE"
+  fi
+  printf '\n%s\n%s\n%s\n' "$PROFILE_BEGIN" "$block" "$PROFILE_END" >> "$NEURAL_PROFILE"
+}
+
 ensure_homebrew() {
   if command -v brew &>/dev/null; then
     log_ok "Homebrew disponible"
@@ -141,14 +160,46 @@ ensure_cask() {
   log_ok "$label instalado"
 }
 
+# gcloud: caso especial. El cask `google-cloud-sdk` NO deja `gcloud` en el PATH
+# del shell actual (a diferencia de las fórmulas, que symlinkean a la bin de
+# brew): hay que sourcear su `path.zsh.inc`. Sin esto, el `gcloud auth login`
+# de la siguiente fase fallaría con "command not found" incluso en máquina nueva.
+ensure_gcloud() {
+  if command -v gcloud &>/dev/null; then
+    log_ok "Google Cloud SDK disponible"
+    return 0
+  fi
+  log_warn "Falta 'Google Cloud SDK'."
+  if ! confirm "¿Instalar 'Google Cloud SDK' vía Homebrew?"; then
+    die "Google Cloud SDK es necesario para autenticarte. Instálalo y reintenta."
+  fi
+  brew install --cask google-cloud-sdk
+  local inc; inc="$(brew --prefix)/share/google-cloud-sdk/path.zsh.inc"
+  if [ -f "$inc" ]; then source "$inc"; fi
+  command -v gcloud &>/dev/null \
+    || die "Google Cloud SDK instalado pero 'gcloud' no quedó en el PATH. Abre una terminal nueva y reintenta."
+  log_ok "Google Cloud SDK instalado"
+}
+
 ensure_homebrew
 ensure_formula git
 ensure_formula gh
 ensure_formula jq
 ensure_formula yq
 ensure_formula python3 python
-ensure_cask gcloud google-cloud-sdk "Google Cloud SDK"
+ensure_gcloud
 ensure_cask code visual-studio-code "VS Code"
+
+# Persistir el PATH para sesiones futuras (brew + gcloud) en ~/.zprofile. En la
+# sesión del instalador ya están cargados; esto asegura que el `claude` diario y
+# cualquier terminal nueva (incl. la integrada de VS Code) los encuentren.
+if command -v brew &>/dev/null; then
+  _brew_bin="$(command -v brew)"
+  _gcloud_inc="$("$_brew_bin" --prefix)/share/google-cloud-sdk/path.zsh.inc"
+  persist_profile_block "eval \"\$(${_brew_bin} shellenv)\"
+[ -f \"${_gcloud_inc}\" ] && source \"${_gcloud_inc}\""
+  log_ok "PATH persistido en ~/.zprofile (brew + gcloud)"
+fi
 
 # ============================================================
 # 2. Autenticación
