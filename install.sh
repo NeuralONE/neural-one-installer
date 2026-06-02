@@ -24,6 +24,29 @@
 set -euo pipefail
 
 # ============================================================
+# Robustez ante `curl | bash`
+# ============================================================
+# Cuando se nos invoca por tubería (el one-liner `curl … | bash`), stdin ES el
+# propio script: cualquier `brew install` / `npm` que lea de stdin drena el
+# resto y el instalador aborta EN SILENCIO (síntoma: se corta justo tras
+# instalar una fórmula, sin error ni prompt). Si stdin no es una terminal
+# (= tubería), descargamos una copia limpia y nos re-ejecutamos desde fichero
+# con stdin apuntando a la terminal real.
+SELF_URL="https://raw.githubusercontent.com/NeuralONE/neural-one-installer/main/install.sh"
+if [ -z "${NEURAL_REEXEC:-}" ] && [ ! -t 0 ]; then
+  _self="$(mktemp)"
+  if command -v curl >/dev/null 2>&1 && curl -fsSL "$SELF_URL" -o "$_self"; then
+    if [ -e /dev/tty ]; then
+      NEURAL_REEXEC=1 exec bash "$_self" </dev/tty
+    else
+      NEURAL_REEXEC=1 exec bash "$_self" </dev/null
+    fi
+  fi
+  # Sin curl o descarga fallida: seguimos best-effort (puede cortarse en un
+  # brew install que lea stdin).
+fi
+
+# ============================================================
 # Config
 # ============================================================
 
@@ -174,8 +197,12 @@ ensure_gcloud() {
     die "Google Cloud SDK es necesario para autenticarte. Instálalo y reintenta."
   fi
   brew install --cask google-cloud-sdk
-  local inc; inc="$(brew --prefix)/share/google-cloud-sdk/path.zsh.inc"
-  if [ -f "$inc" ]; then source "$inc"; fi
+  # En el shell del instalador (bash) sourceamos el include de BASH, no el de
+  # zsh: el .zsh.inc usa sintaxis que `set -u` rompe ("A: unbound variable").
+  # Lo envolvemos en set +u/-u por si acaso. El .zsh.inc (correcto para zsh) se
+  # persiste aparte en ~/.zprofile más abajo, para las terminales del día a día.
+  local inc; inc="$(brew --prefix)/share/google-cloud-sdk/path.bash.inc"
+  if [ -f "$inc" ]; then set +u; source "$inc"; set -u; fi
   command -v gcloud &>/dev/null \
     || die "Google Cloud SDK instalado pero 'gcloud' no quedó en el PATH. Abre una terminal nueva y reintenta."
   log_ok "Google Cloud SDK instalado"
@@ -194,6 +221,11 @@ ensure_claude_code() {
     die "Claude Code es necesario para trabajar. Instálalo (https://claude.ai/install.sh) y reintenta."
   fi
   curl -fsSL https://claude.ai/install.sh | bash
+  # El instalador nativo deja el binario en ~/.local/bin, que no está en el PATH
+  # por defecto. Lo añadimos a esta sesión; la persistencia va al bloque de
+  # ~/.zprofile más abajo (sin esto, `claude` da "command not found" en cada
+  # terminal nueva, incl. la integrada de VS Code).
+  export PATH="$HOME/.local/bin:$PATH"
   if ! command -v claude &>/dev/null && [ ! -x "$HOME/.local/bin/claude" ]; then
     die "Claude Code instalado pero no se encontró el binario. Abre una terminal nueva y reintenta."
   fi
@@ -247,7 +279,8 @@ if command -v brew &>/dev/null; then
   _gcloud_inc="$("$_brew_bin" --prefix)/share/google-cloud-sdk/path.zsh.inc"
   persist_profile_block "eval \"\$(${_brew_bin} shellenv)\"
 [ -f \"${_gcloud_inc}\" ] && source \"${_gcloud_inc}\"
-[ -d \"${VSCODE_BIN}\" ] && export PATH=\"${VSCODE_BIN}:\$PATH\""
+[ -d \"${VSCODE_BIN}\" ] && export PATH=\"${VSCODE_BIN}:\$PATH\"
+export PATH=\"\$HOME/.local/bin:\$PATH\""
   log_ok "PATH persistido en ~/.zprofile (brew + gcloud + VS Code)"
 fi
 
