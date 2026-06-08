@@ -10,7 +10,8 @@
 #
 # Qué hace (y qué NO):
 #   - Instala los prerequisitos que el bootstrap del equipo da por hechos
-#     (Homebrew, git, gh, gcloud, jq, yq, python3, node, VS Code, Claude Code).
+#     (Homebrew, git, gh, gcloud, jq, yq, python3 de brew + pyyaml, node,
+#      VS Code, Claude Code).
 #   - Autentica gcloud + GitHub (lo mínimo para clonar el repo privado).
 #   - Verifica que tu cuenta está autorizada en el equipo (mensaje neutro si no).
 #   - Clona el repo de configuración privado y delega TODO el resto al
@@ -167,6 +168,37 @@ ensure_formula() {
   log_ok "$cmd instalado"
 }
 
+# python3 + pyyaml para los hooks. NO basta `command -v python3`: el python del
+# SISTEMA de macOS (3.7, EOL) lo satisface pero (a) no trae pyyaml y (b) tiene un
+# bug de rutas `--user`. Los hooks (session-start.py, pretool-permission-check.py)
+# hacen `import yaml`; sin él arrancan DEGRADADOS (sin sync, saludo, bloqueo ni
+# capa C — incidente 2026-06-08). Forzamos el python de Homebrew (moderno; con
+# brew ya en el PATH arriba, `python3` resuelve a él) y metemos pyyaml en ESE
+# python (el mismo que usarán los hooks vía `env python3`).
+ensure_python_with_yaml() {
+  if ! brew list python &>/dev/null; then
+    if confirm "¿Instalar python (Homebrew) para los hooks?"; then
+      brew install python
+    else
+      log_warn "Sin el python de brew, los hooks podrían quedar en el python del sistema (sin pyyaml)."
+    fi
+  fi
+  log_ok "python3 → $(command -v python3 2>/dev/null || echo '?') ($(python3 --version 2>&1 || true))"
+  if python3 -c "import yaml" &>/dev/null; then
+    log_ok "pyyaml disponible"
+    return 0
+  fi
+  log_warn "Falta pyyaml; instalándolo en el python de los hooks."
+  python3 -m pip install pyyaml &>/dev/null \
+    || python3 -m pip install --break-system-packages pyyaml &>/dev/null \
+    || true
+  if python3 -c "import yaml" &>/dev/null; then
+    log_ok "pyyaml instalado"
+  else
+    log_warn "No pude instalar pyyaml automáticamente. Los hooks (sync/saludo/capa C) quedarán degradados; instálalo a mano: python3 -m pip install --break-system-packages pyyaml"
+  fi
+}
+
 # Instala un cask brew si el binario testigo no existe.
 ensure_cask() {
   local witness="$1" cask="$2" label="${3:-$cask}"
@@ -265,7 +297,7 @@ ensure_formula git
 ensure_formula gh
 ensure_formula jq
 ensure_formula yq
-ensure_formula python3 python
+ensure_python_with_yaml           # python de brew (no el system 3.7) + pyyaml para los hooks
 ensure_formula node               # trae npx — el bootstrap (módulo 35, MCP Looker) lo exige
 ensure_gcloud
 ensure_vscode
